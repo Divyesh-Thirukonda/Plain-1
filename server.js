@@ -227,7 +227,7 @@ app.post('/api/connections', async (req, res) => {
 
     // Create GitHub webhook
     try {
-      const webhookUrl = `${process.env.RAILWAY_PUBLIC_DOMAIN || 'https://plain-1-production.up.railway.app'}/webhook/github`;
+      const webhookUrl = 'https://plain-1-production.up.railway.app/webhook/github';
       const webhookSecret = process.env.GITHUB_WEBHOOK_SECRET;
 
       await axios.post(

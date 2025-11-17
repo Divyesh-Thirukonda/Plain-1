@@ -28,7 +28,6 @@ Automatically update Confluence documentation when commits are pushed to GitHub.
    ```env
    PORT=3000
    GITHUB_WEBHOOK_SECRET=<generate-a-random-secret>
-   RAILWAY_PUBLIC_DOMAIN=https://your-app.railway.app
    ```
 
 Generate the webhook secret:
@@ -151,13 +150,11 @@ Frontend (Vercel)          Backend (Railway)         External Services
    - Connect your GitHub repo to Railway
    - Railway will auto-detect Node.js and deploy `server.js`
 
-2. **Set Environment Variables** (Only 2 required!)
+2. **Set Environment Variables** (Only 1 required!)
    ```
    GITHUB_WEBHOOK_SECRET=your_secret_here
-   RAILWAY_PUBLIC_DOMAIN=your-app.railway.app
    ```
    - Generate webhook secret: `openssl rand -hex 32`
-   - Railway domain is provided by Railway automatically
 
 3. **Deploy**
    - Railway auto-deploys on push to main branch
@@ -234,7 +231,7 @@ By default, updates are appended. Modify `lib/confluence.js` to:
 ### Webhook creation fails
 - Verify the token has `admin:repo_hook` scope
 - Check you have admin access to the repository
-- Ensure `RAILWAY_PUBLIC_DOMAIN` is set correctly
+- Check Railway logs for detailed error messages
 
 ### Confluence updates not working
 - Verify API token is valid
