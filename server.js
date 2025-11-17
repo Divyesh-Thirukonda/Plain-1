@@ -24,9 +24,22 @@ if (!fs.existsSync(path.join(__dirname, 'data'))) {
 // Helper to read user data
 function getUserData() {
   if (!fs.existsSync(USER_DATA_FILE)) {
-    return { githubToken: '', confluenceEmail: '', confluenceToken: '', confluenceBaseUrl: '' };
+    const defaultData = { 
+      githubToken: '', 
+      githubUsername: '',
+      confluenceEmail: '', 
+      confluenceToken: '', 
+      confluenceBaseUrl: '' 
+    };
+    writeUserData(defaultData);
+    return defaultData;
   }
   return JSON.parse(fs.readFileSync(USER_DATA_FILE, 'utf8'));
+}
+
+// Helper to write user data
+function writeUserData(data) {
+  fs.writeFileSync(USER_DATA_FILE, JSON.stringify(data, null, 2));
 }
 
 // Helper to save user data
@@ -81,18 +94,34 @@ app.get('/api/auth/status', (req, res) => {
 });
 
 // API: Save GitHub token
-app.post('/api/auth/github', (req, res) => {
+app.post('/api/auth/github', async (req, res) => {
   try {
     const { token } = req.body;
     if (!token) {
       return res.status(400).json({ success: false, error: 'Token required' });
     }
 
-    const userData = getUserData();
-    userData.githubToken = token;
-    saveUserData(userData);
+    // Verify token and get username
+    try {
+      const response = await axios.get('https://api.github.com/user', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      const userData = getUserData();
+      userData.githubToken = token;
+      userData.githubUsername = response.data.login;
+      writeUserData(userData);
 
-    res.json({ success: true, message: 'GitHub token saved' });
+      res.json({ 
+        success: true, 
+        username: response.data.login 
+      });
+    } catch (error) {
+      res.status(401).json({ 
+        success: false, 
+        error: 'Invalid GitHub token' 
+      });
+    }
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
