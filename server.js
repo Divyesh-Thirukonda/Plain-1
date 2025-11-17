@@ -13,6 +13,27 @@ const config = require('./config/mapping');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// File paths
+const USER_DATA_FILE = path.join(__dirname, 'data', 'user.json');
+
+// Ensure data directory exists
+if (!fs.existsSync(path.join(__dirname, 'data'))) {
+  fs.mkdirSync(path.join(__dirname, 'data'));
+}
+
+// Helper to read user data
+function getUserData() {
+  if (!fs.existsSync(USER_DATA_FILE)) {
+    return { githubToken: '', confluenceEmail: '', confluenceToken: '', confluenceBaseUrl: '' };
+  }
+  return JSON.parse(fs.readFileSync(USER_DATA_FILE, 'utf8'));
+}
+
+// Helper to save user data
+function saveUserData(data) {
+  fs.writeFileSync(USER_DATA_FILE, JSON.stringify(data, null, 2));
+}
+
 // Middleware
 app.use(cors()); // Enable CORS for frontend
 app.use(bodyParser.json());
@@ -50,6 +71,88 @@ app.get('/', (req, res) => {
   });
 });
 
+// API: Get user authentication status
+app.get('/api/auth/status', (req, res) => {
+  const userData = getUserData();
+  res.json({
+    githubConnected: !!userData.githubToken,
+    confluenceConnected: !!(userData.confluenceEmail && userData.confluenceToken && userData.confluenceBaseUrl)
+  });
+});
+
+// API: Save GitHub token
+app.post('/api/auth/github', (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) {
+      return res.status(400).json({ success: false, error: 'Token required' });
+    }
+
+    const userData = getUserData();
+    userData.githubToken = token;
+    saveUserData(userData);
+
+    res.json({ success: true, message: 'GitHub token saved' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// API: Save Confluence credentials
+app.post('/api/auth/confluence', (req, res) => {
+  try {
+    const { email, token, baseUrl } = req.body;
+    if (!email || !token || !baseUrl) {
+      return res.status(400).json({ success: false, error: 'Email, token, and baseUrl required' });
+    }
+
+    const userData = getUserData();
+    userData.confluenceEmail = email;
+    userData.confluenceToken = token;
+    userData.confluenceBaseUrl = baseUrl;
+    saveUserData(userData);
+
+    res.json({ success: true, message: 'Confluence credentials saved' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// API: Get user's GitHub repositories
+app.get('/api/github/repos', async (req, res) => {
+  try {
+    const userData = getUserData();
+    if (!userData.githubToken) {
+      return res.status(401).json({ success: false, error: 'GitHub not connected' });
+    }
+
+    const response = await axios.get('https://api.github.com/user/repos', {
+      headers: {
+        'Authorization': `Bearer ${userData.githubToken}`,
+        'Accept': 'application/vnd.github.v3+json'
+      },
+      params: {
+        per_page: 100,
+        sort: 'updated',
+        affiliation: 'owner,collaborator,organization_member'
+      }
+    });
+
+    const repos = response.data.map(repo => ({
+      fullName: repo.full_name,
+      name: repo.name,
+      owner: repo.owner.login,
+      private: repo.private,
+      url: repo.html_url
+    }));
+
+    res.json({ success: true, repos });
+  } catch (error) {
+    console.error('Error fetching repos:', error.response?.data || error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // API: Get all connections
 app.get('/api/connections', (req, res) => {
   try {
@@ -60,8 +163,8 @@ app.get('/api/connections', (req, res) => {
   }
 });
 
-// API: Add new connection
-app.post('/api/connections', (req, res) => {
+// API: Add new connection (with auto-webhook creation)
+app.post('/api/connections', async (req, res) => {
   try {
     const { repository, branch, confluencePageId } = req.body;
     
@@ -70,6 +173,11 @@ app.post('/api/connections', (req, res) => {
         success: false, 
         error: 'Missing required fields: repository, branch, confluencePageId' 
       });
+    }
+
+    const userData = getUserData();
+    if (!userData.githubToken) {
+      return res.status(401).json({ success: false, error: 'GitHub not connected' });
     }
 
     // Read current mappings
@@ -86,6 +194,45 @@ app.post('/api/connections', (req, res) => {
         success: false, 
         error: 'Connection already exists for this repository and branch' 
       });
+    }
+
+    // Create GitHub webhook
+    try {
+      const webhookUrl = `${process.env.RAILWAY_PUBLIC_DOMAIN || 'https://plain-1-production.up.railway.app'}/webhook/github`;
+      const webhookSecret = process.env.GITHUB_WEBHOOK_SECRET;
+
+      await axios.post(
+        `https://api.github.com/repos/${repository}/hooks`,
+        {
+          name: 'web',
+          active: true,
+          events: ['push'],
+          config: {
+            url: webhookUrl,
+            content_type: 'json',
+            secret: webhookSecret,
+            insecure_ssl: '0'
+          }
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${userData.githubToken}`,
+            'Accept': 'application/vnd.github.v3+json'
+          }
+        }
+      );
+      console.log(`✅ Webhook created for ${repository}`);
+    } catch (webhookError) {
+      // If webhook already exists, that's okay
+      if (webhookError.response?.status === 422) {
+        console.log(`ℹ️  Webhook already exists for ${repository}`);
+      } else {
+        console.error('Error creating webhook:', webhookError.response?.data || webhookError.message);
+        return res.status(500).json({ 
+          success: false, 
+          error: `Failed to create webhook: ${webhookError.response?.data?.message || webhookError.message}` 
+        });
+      }
     }
 
     // Add new mapping
@@ -118,7 +265,7 @@ module.exports = {
     // Clear require cache to reload the updated file
     delete require.cache[require.resolve('./config/mapping')];
     
-    res.json({ success: true, message: 'Connection added successfully' });
+    res.json({ success: true, message: 'Connection added and webhook created successfully' });
   } catch (error) {
     console.error('Error adding connection:', error);
     res.status(500).json({ success: false, error: error.message });
