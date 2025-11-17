@@ -2,6 +2,9 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const crypto = require('crypto');
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
+const cors = require('cors');
 require('dotenv').config();
 
 const confluenceClient = require('./lib/confluence');
@@ -10,7 +13,8 @@ const config = require('./config/mapping');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware to parse JSON payloads
+// Middleware
+app.use(cors()); // Enable CORS for frontend
 app.use(bodyParser.json());
 
 // Verify GitHub webhook signature
@@ -44,6 +48,144 @@ app.get('/', (req, res) => {
     service: 'GitHub-Confluence Connector',
     timestamp: new Date().toISOString()
   });
+});
+
+// API: Get all connections
+app.get('/api/connections', (req, res) => {
+  try {
+    const mappings = require('./config/mapping').mappings;
+    res.json({ success: true, connections: mappings });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// API: Add new connection
+app.post('/api/connections', (req, res) => {
+  try {
+    const { repository, branch, confluencePageId } = req.body;
+    
+    if (!repository || !branch || !confluencePageId) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required fields: repository, branch, confluencePageId' 
+      });
+    }
+
+    // Read current mappings
+    const configPath = path.join(__dirname, 'config', 'mapping.js');
+    const currentConfig = require('./config/mapping');
+    
+    // Check for duplicates
+    const exists = currentConfig.mappings.some(
+      m => m.repository === repository && m.branch === branch
+    );
+    
+    if (exists) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Connection already exists for this repository and branch' 
+      });
+    }
+
+    // Add new mapping
+    currentConfig.mappings.push({ repository, branch, confluencePageId });
+    
+    // Write back to file
+    const fileContent = `/**
+ * Repository to Confluence Page Mappings
+ * 
+ * Configure which GitHub repositories/branches should update which Confluence pages.
+ * Each mapping specifies:
+ * - repository: Full repository name (owner/repo)
+ * - branch: Branch name to monitor (use '*' for all branches)
+ * - confluencePageId: The ID of the Confluence page to update
+ * 
+ * To find a Confluence page ID:
+ * 1. Open the page in Confluence
+ * 2. Click the three dots (•••) menu
+ * 3. Select "Page Information"
+ * 4. The page ID is in the URL: /pages/viewinfo.action?pageId=XXXXXXXX
+ */
+
+module.exports = {
+  mappings: ${JSON.stringify(currentConfig.mappings, null, 4)}
+};
+`;
+    
+    fs.writeFileSync(configPath, fileContent);
+    
+    // Clear require cache to reload the updated file
+    delete require.cache[require.resolve('./config/mapping')];
+    
+    res.json({ success: true, message: 'Connection added successfully' });
+  } catch (error) {
+    console.error('Error adding connection:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// API: Delete connection
+app.delete('/api/connections', (req, res) => {
+  try {
+    const { repository, branch } = req.body;
+    
+    if (!repository || !branch) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required fields: repository, branch' 
+      });
+    }
+
+    // Read current mappings
+    const configPath = path.join(__dirname, 'config', 'mapping.js');
+    const currentConfig = require('./config/mapping');
+    
+    // Filter out the connection to delete
+    const originalLength = currentConfig.mappings.length;
+    currentConfig.mappings = currentConfig.mappings.filter(
+      m => !(m.repository === repository && m.branch === branch)
+    );
+    
+    if (currentConfig.mappings.length === originalLength) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Connection not found' 
+      });
+    }
+
+    // Write back to file
+    const fileContent = `/**
+ * Repository to Confluence Page Mappings
+ * 
+ * Configure which GitHub repositories/branches should update which Confluence pages.
+ * Each mapping specifies:
+ * - repository: Full repository name (owner/repo)
+ * - branch: Branch name to monitor (use '*' for all branches)
+ * - confluencePageId: The ID of the Confluence page to update
+ * 
+ * To find a Confluence page ID:
+ * 1. Open the page in Confluence
+ * 2. Click the three dots (•••) menu
+ * 3. Select "Page Information"
+ * 4. The page ID is in the URL: /pages/viewinfo.action?pageId=XXXXXXXX
+ */
+
+module.exports = {
+  mappings: ${JSON.stringify(currentConfig.mappings, null, 4)}
+};
+`;
+    
+    fs.writeFileSync(configPath, fileContent);
+    
+    // Clear require cache
+    delete require.cache[require.resolve('./config/mapping')];
+    
+    res.json({ success: true, message: 'Connection deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting connection:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 // GitHub webhook endpoint
