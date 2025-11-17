@@ -1,134 +1,85 @@
 # GitHub-Confluence Connector 🔗
 
-Automatically update Confluence documentation when commits are pushed to GitHub. This webhook-based connector listens for GitHub push events and appends commit information to specified Confluence pages.
+Automatically update Confluence documentation when commits are pushed to GitHub. This connector uses a modern web UI where users authenticate once, then easily create repository-to-page connections. Webhooks are created automatically!
 
 ## Features
 
-✅ **Automatic Updates** - Confluence pages update automatically when you push to GitHub  
-✅ **Branch-Specific Mapping** - Map different branches to different Confluence pages  
-✅ **Secure** - Validates GitHub webhook signatures  
-✅ **Formatted Updates** - Clean, readable commit logs with links back to GitHub  
-✅ **Easy Configuration** - Simple mapping file to connect repos to pages  
+✅ **Automatic Webhook Creation** - No manual GitHub webhook setup required!  
+✅ **Web Dashboard** - Beautiful UI for managing connections  
+✅ **GitHub OAuth** - Secure token-based authentication  
+✅ **Branch-Specific Mapping** - Map different branches to different pages  
+✅ **Multi-Repository Support** - Handle unlimited repos from one deployment  
+✅ **Real-time Sync** - Commit information instantly appears in Confluence  
 
 ## How It Works
 
-1. You push commits to GitHub
-2. GitHub sends a webhook to your server
-3. The connector processes the commits
-4. Confluence page is automatically updated with commit details
+1. User visits the web dashboard and connects GitHub (Personal Access Token)
+2. User connects Confluence (API Token)
+3. User selects a repository, branch, and Confluence page ID
+4. Backend **automatically creates** the GitHub webhook
+5. Future commits to that repo/branch → automatically update the Confluence page!
 
-## Prerequisites
+## Quick Start
 
-- Node.js (v14 or higher)
-- A GitHub repository with admin access (to configure webhooks)
-- A Confluence account with API access
-- A server or hosting environment to run the webhook listener
+### Backend Deployment (Railway)
 
-## Setup Instructions
+1. Deploy this repo to Railway
+2. Set environment variables:
+   ```env
+   PORT=3000
+   GITHUB_WEBHOOK_SECRET=<generate-a-random-secret>
+   RAILWAY_PUBLIC_DOMAIN=https://your-app.railway.app
+   ```
 
-### 1. Install Dependencies
-
+Generate the webhook secret:
 ```bash
-npm install
+openssl rand -hex 32
 ```
 
-### 2. Configure Environment Variables
+### Frontend Deployment (Vercel)
 
-Copy the example environment file:
+1. Deploy the `frontend` folder to Vercel
+2. The API URL is hardcoded in `frontend/app/page.tsx` - update if needed
+3. That's it!
 
-```bash
-cp .env.example .env
-```
+## User Guide
 
-Edit `.env` with your credentials:
+### First Time Setup
 
-```env
-PORT=3000
-GITHUB_WEBHOOK_SECRET=your_secret_key_here
+1. **Visit the dashboard** (your Vercel URL)
+2. **Connect GitHub:**
+   - Click "Connect GitHub"
+   - Generate a Personal Access Token at: https://github.com/settings/tokens/new
+   - Required scopes: `repo`, `admin:repo_hook`
+   - Paste token and click Connect
+3. **Connect Confluence:**
+   - Click "Connect Confluence"
+   - Enter your Atlassian domain (e.g., `https://company.atlassian.net`)
+   - Enter your email
+   - Generate API token at: https://id.atlassian.com/manage-profile/security/api-tokens
+   - Paste token and click Connect
 
-CONFLUENCE_BASE_URL=https://your-domain.atlassian.net
-CONFLUENCE_EMAIL=your-email@example.com
-CONFLUENCE_API_TOKEN=your_api_token_here
-```
+### Adding a Connection
 
-#### Getting Confluence API Token:
+1. Select a repository from the dropdown (auto-populated from your GitHub)
+2. Enter the branch name (e.g., `main`, `develop`, or `*` for all branches)
+3. Enter the Confluence Page ID:
+   - Open your Confluence page
+   - Click ••• → Page Information  
+   - Copy the page ID from the URL: `/pages/viewinfo.action?pageId=XXXXXXXX`
+4. Click "Add Connection"
+5. ✅ Done! The webhook is automatically created in GitHub
 
-1. Go to https://id.atlassian.com/manage-profile/security/api-tokens
-2. Click "Create API token"
-3. Give it a name and copy the token
-4. Use your Atlassian email and this token in `.env`
+### What Happens Next
 
-### 3. Configure Repository Mappings
-
-Edit `config/mapping.js` to map your GitHub repositories to Confluence pages:
-
-```javascript
-module.exports = {
-  mappings: [
-    {
-      repository: 'your-org/your-repo',
-      branch: 'main',
-      confluencePageId: '123456789'
-    }
-  ]
-};
-```
-
-#### Finding Confluence Page ID:
-
-1. Open the Confluence page you want to update
-2. Click the three dots (•••) menu → "Page Information"
-3. The page ID is in the URL: `/pages/viewinfo.action?pageId=XXXXXXXX`
-
-### 4. Start the Server
-
-For development:
-```bash
-npm run dev
-```
-
-For production:
-```bash
-npm start
-```
-
-The server will start on the port specified in `.env` (default: 3000).
-
-### 5. Configure GitHub Webhook
-
-1. Go to your GitHub repository → Settings → Webhooks → Add webhook
-2. Set **Payload URL** to: `https://your-server-domain.com/webhook/github`
-3. Set **Content type** to: `application/json`
-4. Set **Secret** to the same value as `GITHUB_WEBHOOK_SECRET` in your `.env`
-5. Select **"Just the push event"** or choose individual events
-6. Ensure **Active** is checked
-7. Click "Add webhook"
-
-#### Testing Locally with ngrok:
-
-If testing locally, use ngrok to expose your local server:
-
-```bash
-# Install ngrok: https://ngrok.com/download
-ngrok http 3000
-```
-
-Use the ngrok URL (e.g., `https://abc123.ngrok.io/webhook/github`) as your GitHub webhook URL.
-
-## Usage
-
-Once configured, simply push commits to your mapped repositories:
-
-```bash
-git commit -m "Update documentation"
-git push origin main
-```
-
-The Confluence page will automatically update with:
-- Timestamp of the update
-- Repository and branch information
-- List of commits with links to GitHub
-- Author information
+Every time you push commits to the configured repository/branch:
+- GitHub sends a webhook to your Railway backend
+- Backend formats the commit information
+- Confluence page is automatically updated with:
+  - Timestamp
+  - Repository and branch info
+  - List of commits with links
+  - Author information
 
 ## Project Structure
 
@@ -141,100 +92,187 @@ github-confluence-connector/
 │   └── mapping.js           # Repository to page mappings
 ├── package.json
 ├── .env.example
+## Project Structure
+
+```
+github-confluence-connector/
+├── server.js                 # Main webhook server + API
+├── lib/
+│   └── confluence.js        # Confluence API client
+├── config/
+│   └── mapping.js           # Repository to page mappings (managed via API)
+├── data/
+│   └── user.json           # User tokens (auto-created, gitignored)
+├── frontend/                # Next.js dashboard
+│   ├── app/
+│   │   ├── page.tsx        # Main dashboard
+│   │   ├── layout.tsx      # Layout wrapper
+│   │   └── globals.css     # Vercel-style CSS
+│   └── package.json
+├── package.json
+├── .env.example
 ├── .gitignore
 └── README.md
 ```
 
-## Deployment
+## Architecture
 
-### Deploy to Heroku
-
-```bash
-heroku create your-app-name
-heroku config:set GITHUB_WEBHOOK_SECRET=your_secret
-heroku config:set CONFLUENCE_BASE_URL=https://your-domain.atlassian.net
-heroku config:set CONFLUENCE_EMAIL=your-email@example.com
-heroku config:set CONFLUENCE_API_TOKEN=your_token
-git push heroku main
+```
+Frontend (Vercel)          Backend (Railway)         External Services
+     │                          │                          │
+     │  1. User connects        │                          │
+     │     GitHub/Confluence    │                          │
+     ├──────────────────────────>                          │
+     │  POST /api/auth/*        │                          │
+     │                          │  2. Verify & store       │
+     │                          │     tokens in files      │
+     │                          │                          │
+     │  3. User adds connection │                          │
+     ├──────────────────────────>                          │
+     │  POST /api/connections   │                          │
+     │                          │  4. Auto-create webhook  │
+     │                          ├─────────────────────────> GitHub API
+     │                          │     POST /repos/.../hooks │
+     │                          │                          │
+     │                          │  5. Push event occurs    │
+     │                          │<──────────────────────── GitHub
+     │                          │     POST /webhook/github │
+     │                          │                          │
+     │                          │  6. Update docs          │
+     │                          ├─────────────────────────> Confluence API
+     │                          │     PUT /content/{pageId}│
 ```
 
-### Deploy to Railway
+## Deployment
 
-1. Connect your GitHub repository to Railway
-2. Add environment variables in Railway dashboard
-3. Deploy automatically on push
+### Backend (Railway)
 
-### Deploy to DigitalOcean/AWS/GCP
+1. **Connect Repository**
+   - Connect your GitHub repo to Railway
+   - Railway will auto-detect Node.js and deploy `server.js`
 
-1. Set up a Node.js server
-2. Clone the repository
-3. Install dependencies: `npm install`
-4. Configure environment variables
-5. Use PM2 to run the server: `pm2 start server.js`
-6. Set up nginx as a reverse proxy (optional)
+2. **Set Environment Variables** (Only 2 required!)
+   ```
+   GITHUB_WEBHOOK_SECRET=your_secret_here
+   RAILWAY_PUBLIC_DOMAIN=your-app.railway.app
+   ```
+   - Generate webhook secret: `openssl rand -hex 32`
+   - Railway domain is provided by Railway automatically
+
+3. **Deploy**
+   - Railway auto-deploys on push to main branch
+   - Backend will be available at `https://your-app.railway.app`
+
+**Note:** Confluence and GitHub credentials are NOT set in environment variables. Users enter them through the web UI, and they're stored in `data/user.json`.
+
+### Frontend (Vercel)
+
+1. **Connect Repository**
+   - Import your GitHub repo to Vercel
+   - Select the `frontend` directory as root
+
+2. **Set Environment Variable**
+   ```
+   NEXT_PUBLIC_API_URL=https://your-app.railway.app
+   ```
+
+3. **Deploy**
+   - Vercel auto-deploys on push to main branch
+   - Frontend will be available at `https://your-app.vercel.app`
+
+### First-Time Setup After Deployment
+
+1. Visit your Vercel frontend URL
+2. Click "Connect GitHub" and paste your GitHub Personal Access Token (with `repo` + `admin:repo_hook` scopes)
+3. Click "Connect Confluence" and enter your Confluence domain, email, and API token
+4. Add connections: select repository → enter Confluence page ID → submit
+5. Webhooks are automatically created in GitHub!
 
 ## API Endpoints
 
-- `GET /` - Health check endpoint
-- `POST /webhook/github` - GitHub webhook receiver
+**Public:**
+- `GET /` - Health check
+- `POST /webhook/github` - GitHub webhook receiver (called by GitHub)
+
+**Dashboard:**
+- `GET /api/auth/status` - Check connection status
+- `POST /api/auth/github` - Save GitHub token
+- `POST /api/auth/confluence` - Save Confluence credentials
+- `GET /api/github/repos` - List user's repositories
+- `GET /api/connections` - List all connections
+- `POST /api/connections` - Add new connection (auto-creates webhook!)
+- `DELETE /api/connections` - Remove connection
 
 ## Customization
 
-### Change Update Format
+### Change Commit Format
 
-Modify the `buildUpdateContent()` function in `server.js` to customize how commit information is displayed in Confluence.
+Edit `buildUpdateContent()` in `server.js` to customize the HTML output:
+
+```javascript
+function buildUpdateContent(commits, repository, branch, pusher) {
+  // Customize your HTML here
+  let content = `<h3>Custom Format</h3>`;
+  // ... your format
+  return content;
+}
+```
 
 ### Update Strategy
 
-By default, updates are appended to the bottom of the page. You can modify `lib/confluence.js` to:
-- Prepend updates (add to top)
-- Update specific sections using markers
-- Replace entire page content
-
-Example for prepending:
-```javascript
-await confluenceClient.prependToPage(pageConfig.confluencePageId, updateContent);
-```
+By default, updates are appended. Modify `lib/confluence.js` to:
+- `prependToPage()` - Add to top
+- `updateSection()` - Update specific marked sections
 
 ## Troubleshooting
 
-### Webhook not firing
-- Check GitHub webhook delivery logs in GitHub settings
-- Verify your server is publicly accessible
-- Check server logs for errors
+### "GitHub not connected" error
+- Generate a new Personal Access Token
+- Ensure it has `repo` and `admin:repo_hook` scopes
+- Re-connect in the dashboard
 
-### Authentication errors
-- Verify Confluence API token is correct
-- Ensure the email matches your Atlassian account
-- Check that the user has permission to edit the page
+### Webhook creation fails
+- Verify the token has `admin:repo_hook` scope
+- Check you have admin access to the repository
+- Ensure `RAILWAY_PUBLIC_DOMAIN` is set correctly
 
-### Page not updating
-- Verify the Confluence page ID is correct
-- Check that mappings in `config/mapping.js` match your repository
-- Look for errors in server logs
+### Confluence updates not working
+- Verify API token is valid
+- Check the user has edit permission on the page
+- Confirm the page ID is correct
 
-## Security Considerations
+### Connection shows in dashboard but webhook missing in GitHub
+- The webhook may have failed to create
+- Check Railway logs for errors
+- Manually verify in GitHub repo → Settings → Webhooks
 
-- Always use HTTPS in production
-- Keep your webhook secret secure
-- Regularly rotate API tokens
-- Run the server with minimal permissions
-- Consider rate limiting for high-traffic repositories
+## Security
+
+- Tokens are stored server-side in files (not in database)
+- Webhook signatures are validated using `GITHUB_WEBHOOK_SECRET`
+- All API communication uses HTTPS
+- Frontend hosted separately from backend
+- Tokens never exposed to client
+- Each user brings their own GitHub/Confluence credentials
+
+## Tech Stack
+
+- **Frontend:** Next.js 14, TypeScript, Tailwind CSS
+- **Backend:** Node.js, Express
+- **Deployment:** Vercel (frontend), Railway (backend)
+- **Storage:** File-based (no database required)
 
 ## Contributing
 
-Feel free to submit issues and pull requests to improve this connector!
+Contributions welcome! Please open an issue or PR.
 
 ## License
 
-MIT License - feel free to use this in your own projects.
-
-## Support
-
-For issues related to:
-- GitHub webhooks: https://docs.github.com/en/webhooks
-- Confluence API: https://developer.atlassian.com/cloud/confluence/rest/
+MIT
 
 ---
+
+**Built with ❤️ for better documentation workflows**
+
 
 Made with ❤️ for better documentation workflows
