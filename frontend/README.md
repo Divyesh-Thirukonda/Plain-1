@@ -9,16 +9,6 @@ Modern Next.js dashboard for managing GitHub to Confluence connections.
 npm install
 ```
 
-2. Configure environment:
-```bash
-cp .env.example .env
-```
-
-Edit `.env` and set:
-```
-NEXT_PUBLIC_API_URL=https://your-railway-backend-url.railway.app
-```
-
 3. Run development server:
 ```bash
 npm run dev
@@ -34,5 +24,3 @@ Deploy to Vercel or Railway:
 npm run build
 npm start
 ```
-
-Make sure to set `NEXT_PUBLIC_API_URL` environment variable in your deployment platform.
